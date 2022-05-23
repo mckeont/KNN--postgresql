@@ -1,0 +1,89 @@
+ ---- HW exercise
+
+--Using a KNN operator and a correlated subquery, create a query which lists -
+--the names of all subway stations and the nearest other subway station. 
+--CHALLENGE: Also display the distance between the station. 
+--Since a correlated subquery can only return a single column, 
+--you would have to construct a “compound” column, either using string concatenation
+--(easiest) or the array constructor (harder).
+
+select *
+from boundless.nyc_subway_stations;
+
+select b.name,
+  ( select a.name
+    from boundless.nyc_subway_stations a 
+    where a.name <> b.name 
+    order by a.geom <#> b.geom limit 1)
+ as nearest_subway_station
+ from boundless.nyc_subway_stations b;
+
+--Using a KNN operator and a lateral join, create a query which calculates the
+--distance from every subway station to the nearest five other subway stations.
+--List the station names and the distances in the output.
+
+select a.name, c.name, ST_Distance(a.geom, c.geom)
+from boundless.nyc_subway_stations as a 
+cross join lateral 
+  ( select b.name, b.geom
+    from boundless.nyc_subway_stations as b 
+    order by b.geom <#> a.geom limit 5) as c; 
+   
+   
+   
+  --Create three queries which calculate the average nearest distance 
+  --from NYC census blocks to subway stations for those blocks
+  --which are (a) 45% or greater African-American, (b) 45% or greater White,
+  --and (c) 45% or greater Asian. That is, your result should be one average
+  --nearest distance for each set of census blocks meeting the given demographic criteria. 
+   
+   --(a) 45% or greater African-American
+   select c.blkid as census_block, a.name as sub_station, perc_black, avg(st_distance(a.geom, c.geom)) as avg_distance
+   from boundless.nyc_subway_stations as a 
+   cross join lateral
+   ( select b.blkid, ((popn_black / popn_total)*100) as perc_black,  b.geom
+   from boundless.nyc_census_blocks  as b
+   where popn_black <> 0
+    order by b.geom <#> a.geom) as c
+   where perc_black >= 45
+  group by c.blkid, a.name, perc_black;
+  
+  --(a) 45% or greater White
+   select c.blkid as census_block, a.name as sub_station, perc_white, avg(st_distance(a.geom, c.geom)) as avg_distance
+   from boundless.nyc_subway_stations as a 
+   cross join lateral
+   ( select b.blkid, ((popn_white / popn_total)*100) as perc_white,  b.geom
+   from boundless.nyc_census_blocks  as b
+   where popn_white <> 0
+    order by b.geom <#> a.geom) as c
+   where perc_white >= 45
+     group by c.blkid, a.name, perc_white;
+  
+   --(a) 45% or greater Asian
+   select c.blkid as census_block, a.name as sub_station, perc_asian, avg(st_distance(a.geom, c.geom)) as avg_distance
+   from boundless.nyc_subway_stations as a 
+   cross join lateral
+   ( select b.blkid, ((popn_asian / popn_total)*100) as perc_asian,  b.geom
+   from boundless.nyc_census_blocks  as b
+   where popn_asian <> 0
+    order by b.geom <#> a.geom) as c
+   where perc_asian >= 45
+     group by c.blkid, a.name, perc_asian;
+    
+    select blkid, popn_total, popn_asian
+    from boundless.nyc_census_blocks
+    where blkid = '360050060001016';
+   
+ --1 part 2 Create a query which calculates distances from each city
+ --in the United States in the ne_110m_populated_places layer 
+ --to its five nearest cities in any country. List the cities 
+ --and distances in the output.
+
+  select a.name as US_city, c.name, ST_Distance(a.geom, c.geom)
+  from natural_earth.ne_110m_populated_places as a
+  cross join lateral
+   ( select b.name, b.geom 
+     from natural_earth.ne_110m_populated_places as b 
+     order by b.geom <#> a.geom limit 5) as c
+  where sov0name ilike 'United%States';
+ 
